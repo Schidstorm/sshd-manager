@@ -33,9 +33,9 @@ func handleServer(writer http.ResponseWriter, request *http.Request) {
 			panic(err)
 		}
 
-		etcd.Put(fmt.Sprintf("/servers/%s/hostname", server.Key), server.Hostname)
+		etcd.Put(request.Context(), fmt.Sprintf("/servers/%s/hostname", server.Key), server.Hostname)
 		for _, group := range server.Groups {
-			etcd.Put(fmt.Sprintf("/servers/%s/groups/%s", server.Key, group), "1")
+			etcd.Put(request.Context(), fmt.Sprintf("/servers/%s/groups/%s", server.Key, group), "1")
 		}
 
 		writer.WriteHeader(200)
@@ -63,7 +63,7 @@ func handleGroup(writer http.ResponseWriter, request *http.Request) {
 			panic(err)
 		}
 
-		etcd.Put(fmt.Sprintf("/groups/%s", group.Key), "1")
+		etcd.Put(request.Context(), fmt.Sprintf("/groups/%s", group.Key), "1")
 
 		writer.WriteHeader(200)
 		writer.Write([]byte("OK"))
@@ -90,10 +90,10 @@ func handleAccount(writer http.ResponseWriter, request *http.Request) {
 			panic(err)
 		}
 
-		etcd.Put(fmt.Sprintf("/accounts/%s/label", account.Key), account.Label)
-		etcd.Put(fmt.Sprintf("/accounts/%s/publicKey", account.Key), account.PublicKey)
+		etcd.Put(request.Context(), fmt.Sprintf("/accounts/%s/label", account.Key), account.Label)
+		etcd.Put(request.Context(), fmt.Sprintf("/accounts/%s/publicKey", account.Key), account.PublicKey)
 		for _, group := range account.Groups {
-			etcd.Put(fmt.Sprintf("/accounts/%s/groups/%s", account.Key, group), "1")
+			etcd.Put(request.Context(), fmt.Sprintf("/accounts/%s/groups/%s", account.Key, group), "1")
 		}
 
 		writer.WriteHeader(200)
