@@ -1,8 +1,7 @@
 /accounts/<key>/label test@abc
                /publicKey
-               /groups/<groupKey>
 
 /servers/<key>/hostname
               /groups/<groupKey>
 
-/groups/<key>/
+/groups/<key>/accounts/<accountKey> <publicKey>

@@ -12,3 +12,12 @@ func ParseYaml(target interface{}, yamlString string) error {
 
 	return nil
 }
+
+func SerializeYaml(target interface{}) ([]byte, error) {
+	data, err := yaml.Marshal(target)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
