@@ -3,22 +3,21 @@ package config
 import (
 	"fmt"
 	"github.com/schidstorm/sshd-manager/parser"
+	"github.com/schidstorm/sshd-manager/putter"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 )
 
 type Config struct {
-	EtcdEndpoints []string `yaml:"etcdEndpoints"`
-	Listen        string   `yaml:"listen"`
+	Etcd   putter.EtcdConfig `yaml:"etcd"`
+	Putter putter.PutterType `yaml:"putter"`
+	Listen string            `yaml:"listen"`
 }
 
 var Current = &Config{
-	EtcdEndpoints: []string{},
-	Listen:        "127.0.0.1:8080",
-}
-
-func GetConfig() *Config {
-	return Current
+	Etcd:   putter.EtcdConfig{},
+	Putter: putter.PutterTypeEtcd,
+	Listen: "127.0.0.1:8080",
 }
 
 func ParseConfig(filePath string) *Config {

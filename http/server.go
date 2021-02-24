@@ -1,49 +1,44 @@
 package http
 
 import (
-	"fmt"
-	"github.com/mpvl/unique"
-	"github.com/schidstorm/sshd-manager/config"
 	"github.com/schidstorm/sshd-manager/manager"
 	"github.com/schidstorm/sshd-manager/parser"
 	"github.com/schidstorm/sshd-manager/putter"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
-	"sort"
-	"strings"
 )
 
-func Run(endpoint string) error {
-	http.HandleFunc("/account", handleAccount)
-	http.HandleFunc("/server", handleServer)
-	http.HandleFunc("/serverKeys", handleServerKeys)
-	return http.ListenAndServe(endpoint, nil)
+type Server struct {
+	putterObj putter.Putter
+	addr      string
 }
 
-func handleServerKeys(writer http.ResponseWriter, request *http.Request) {
-	etcd := putter.NewEtcd(config.GetConfig().EtcdEndpoints)
-	err := etcd.Connect()
-	defer etcd.Disconnect()
+func NewServer(addr string, putterObj putter.Putter) *Server {
+	return &Server{
+		putterObj: putterObj,
+		addr:      addr,
+	}
+}
+
+func (server *Server) Run(addr string) error {
+	http.HandleFunc("/account", server.handleAccount)
+	http.HandleFunc("/server", server.handleServer)
+	http.HandleFunc("/serverKeys", server.handleServerKeys)
+
+	logrus.Infof("listening on %s", addr)
+	return http.ListenAndServe(addr, nil)
+}
+
+func (server *Server) handleServerKeys(writer http.ResponseWriter, request *http.Request) {
+	err := server.putterObj.Connect()
+	defer server.putterObj.Disconnect()
 	if err != nil {
 		panic(err)
 	}
 	if request.Method == "GET" {
 		serverKey := request.URL.Query().Get("key")
-		groupsPrefix := fmt.Sprintf("/servers/%s/groups/", serverKey)
-		etcdGroupKVPs := etcd.GetAllByPrefix(request.Context(), groupsPrefix)
-
-		var publicKeys []string
-		for groupKey, flag := range etcdGroupKVPs {
-			if flag == "1" {
-				etcdGroupAccounts := etcd.GetAllByPrefix(request.Context(), fmt.Sprintf("/groups/%s/accounts/", groupKey))
-				for _, publicKey := range etcdGroupAccounts {
-					publicKeys = append(publicKeys, publicKey)
-				}
-			}
-		}
-
-		sort.Strings(publicKeys)
-		unique.Strings(&publicKeys)
+		publicKeys := server.putterObj.GetPublicKeysByServerKey(request.Context(), serverKey)
 
 		buffer, _ := parser.SerializeJson(publicKeys)
 		writer.WriteHeader(200)
@@ -55,26 +50,22 @@ func handleServerKeys(writer http.ResponseWriter, request *http.Request) {
 	writer.Write([]byte("Failed"))
 }
 
-func handleServer(writer http.ResponseWriter, request *http.Request) {
+func (server *Server) handleServer(writer http.ResponseWriter, request *http.Request) {
 	defer request.Body.Close()
-	etcd := putter.NewEtcd(config.GetConfig().EtcdEndpoints)
-	err := etcd.Connect()
-	defer etcd.Disconnect()
+	err := server.putterObj.Connect()
+	defer server.putterObj.Disconnect()
 	if err != nil {
 		panic(err)
 	}
 	if request.Method == "POST" {
-		server := &manager.Server{}
+		managedServer := &manager.Server{}
 		buffer, _ := ioutil.ReadAll(request.Body)
-		err := parser.ParseYaml(server, string(buffer))
+		err := parser.ParseYaml(managedServer, string(buffer))
 		if err != nil {
 			panic(err)
 		}
 
-		etcd.Put(request.Context(), fmt.Sprintf("/servers/%s/hostname", server.Key), server.Hostname)
-		for _, group := range server.Groups {
-			etcd.Put(request.Context(), fmt.Sprintf("/servers/%s/groups/%s", server.Key, group), "1")
-		}
+		server.putterObj.AddServer(request.Context(), managedServer)
 
 		writer.WriteHeader(200)
 		writer.Write([]byte("OK"))
@@ -85,11 +76,10 @@ func handleServer(writer http.ResponseWriter, request *http.Request) {
 	writer.Write([]byte("Failed"))
 }
 
-func handleAccount(writer http.ResponseWriter, request *http.Request) {
+func (server *Server) handleAccount(writer http.ResponseWriter, request *http.Request) {
 	defer request.Body.Close()
-	etcd := putter.NewEtcd(config.GetConfig().EtcdEndpoints)
-	err := etcd.Connect()
-	defer etcd.Disconnect()
+	err := server.putterObj.Connect()
+	defer server.putterObj.Disconnect()
 	if err != nil {
 		panic(err)
 	}
@@ -101,21 +91,7 @@ func handleAccount(writer http.ResponseWriter, request *http.Request) {
 			panic(err)
 		}
 
-		etcd.Put(request.Context(), fmt.Sprintf("/accounts/%s/label", account.Key), account.Label)
-		etcd.Put(request.Context(), fmt.Sprintf("/accounts/%s/publicKey", account.Key), account.PublicKey)
-
-		etcdGroups := etcd.GetAllByPrefix(request.Context(), "/groups/")
-		for etcdGroupKey, _ := range etcdGroups {
-			parts := strings.Split(etcdGroupKey, "/")
-			accountKey := parts[2]
-			if accountKey == account.Key {
-				etcd.Delete(request.Context(), fmt.Sprintf("/groups/%s", etcdGroupKey))
-			}
-		}
-
-		for _, group := range account.Groups {
-			etcd.Put(request.Context(), fmt.Sprintf("/groups/%s/accounts/%s", group, account.Key), account.PublicKey)
-		}
+		server.putterObj.AddAccount(request.Context(), account)
 
 		writer.WriteHeader(200)
 		writer.Write([]byte("OK"))
