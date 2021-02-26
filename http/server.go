@@ -29,18 +29,19 @@ func (server *Server) Run(addr string) error {
 	http.Handle("/server", jsonOutputMiddleware(http.HandlerFunc(server.handleServer)))
 	http.Handle("/serverKeys", jsonOutputMiddleware(http.HandlerFunc(server.handleServerKeys)))
 
+	logrus.Infof("connecting to etcd")
+	err := server.putterObj.Connect()
+	defer server.putterObj.Disconnect()
+	if err != nil {
+		return err
+	}
+
 	logrus.Infof("listening on %s", addr)
 	return http.ListenAndServe(addr, nil)
 }
 
 func (server *Server) handleServerKeys(writer http.ResponseWriter, request *http.Request) {
 	response := request.Context().Value("response").(*Response)
-	err := server.putterObj.Connect()
-	defer server.putterObj.Disconnect()
-	if err != nil {
-		response.Err(err)
-		return
-	}
 
 	if request.Method == "GET" {
 		serverKey := request.URL.Query().Get("key")
@@ -54,12 +55,6 @@ func (server *Server) handleServerKeys(writer http.ResponseWriter, request *http
 func (server *Server) handleServer(writer http.ResponseWriter, request *http.Request) {
 	response := request.Context().Value("response").(*Response)
 	defer request.Body.Close()
-	err := server.putterObj.Connect()
-	defer server.putterObj.Disconnect()
-	if err != nil {
-		response.Err(err)
-		return
-	}
 
 	if request.Method == "POST" {
 		managedServer := &manager.Server{}
@@ -73,6 +68,17 @@ func (server *Server) handleServer(writer http.ResponseWriter, request *http.Req
 		server.putterObj.AddServer(request.Context(), managedServer)
 
 		response.Ok(nil)
+	} else if request.Method == "GET" {
+		serverKey := request.URL.Query().Get("key")
+		if serverKey == "" {
+			response.Ok(server.putterObj.ListServers(request.Context()))
+		} else {
+			response.Ok(server.putterObj.GetServer(request.Context(), serverKey))
+		}
+	} else if request.Method == "DELETE" {
+		serverKey := request.URL.Query().Get("key")
+		server.putterObj.DeleteServer(request.Context(), serverKey)
+		response.Ok(nil)
 	} else {
 		response.Err(errors.New("method not allowed"))
 	}
@@ -81,12 +87,6 @@ func (server *Server) handleServer(writer http.ResponseWriter, request *http.Req
 func (server *Server) handleAccount(writer http.ResponseWriter, request *http.Request) {
 	response := request.Context().Value("response").(*Response)
 	defer request.Body.Close()
-	err := server.putterObj.Connect()
-	defer server.putterObj.Disconnect()
-	if err != nil {
-		response.Err(err)
-		return
-	}
 
 	if request.Method == "POST" {
 		account := &manager.Account{}
@@ -98,6 +98,17 @@ func (server *Server) handleAccount(writer http.ResponseWriter, request *http.Re
 		}
 
 		server.putterObj.AddAccount(request.Context(), account)
+		response.Ok(nil)
+	} else if request.Method == "GET" {
+		accountKey := request.URL.Query().Get("key")
+		if accountKey == "" {
+			response.Ok(server.putterObj.ListAccounts(request.Context()))
+		} else {
+			response.Ok(server.putterObj.GetAccount(request.Context(), accountKey))
+		}
+	} else if request.Method == "DELETE" {
+		accountKey := request.URL.Query().Get("key")
+		server.putterObj.DeleteAccount(request.Context(), accountKey)
 		response.Ok(nil)
 	} else {
 		response.Err(errors.New("method not allowed"))
